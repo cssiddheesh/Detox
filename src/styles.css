@@ -748,3 +748,55 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Settings, provider fields, and voice controls */
+:root {
+  --text-soft: #68695f;
+  --primary-dark: #895356;
+}
+:root[data-theme='dark'] {
+  --text-soft: #b8b9aa;
+  --primary-dark: #efbaba;
+}
+.button-sage { color: #243019; }
+.button:disabled { opacity: .62; }
+.settings-search { display: flex; min-height: 42px; align-items: center; gap: 9px; padding: 0 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text-secondary); }
+.settings-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font-size: 12px; }
+.settings-card > select, .settings-field input:not([type='range']), .voice-settings-card select { width: 100%; min-width: 0; min-height: 39px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--background); color: var(--text-primary); font-size: 11px; }
+.settings-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; margin-top: 15px; }
+.settings-field { display: flex; min-width: 0; flex-direction: column; gap: 6px; color: var(--text-primary); font-size: 10px; font-weight: 650; }
+.settings-field > span { display: flex; justify-content: space-between; gap: 8px; }
+.settings-field small { color: var(--text-secondary); font-size: 9px; font-weight: 400; }
+.settings-field output, .range-setting output { color: var(--text-secondary); font-variant-numeric: tabular-nums; font-weight: 500; }
+.settings-field input[type='range'], .range-setting input[type='range'] { width: 100%; accent-color: var(--success-dark); }
+.settings-action-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.settings-action-row .button { min-width: 0; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
+.voice-settings-card h2 { margin: 0 0 13px; font-family: Manrope, sans-serif; font-size: 13px; }
+.voice-settings-card .field-label { display: block; margin: 12px 0 6px; color: var(--text-primary); font-size: 10px; font-weight: 650; }
+.range-setting { display: block; margin-top: 14px; color: var(--text-primary); font-size: 10px; }
+.range-setting > span { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.audio-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.audio-button { min-height: 32px; padding: 5px 7px; border: 1px solid transparent; border-radius: 8px; }
+.audio-button:hover { border-color: var(--border); background: var(--surface); }
+.settings-field input:focus-visible, .settings-card select:focus-visible, .voice-settings-card select:focus-visible, .settings-search input:focus-visible, .voice-input input:focus-visible { outline: 3px solid var(--success-dark); outline-offset: 2px; }
+.state-note.error { color: #783b40; }
+:root[data-theme='dark'] .state-note.error { color: #ffd5d5; }
+.appearance-option, .provider-option, .toggle-row, .audio-button { min-height: 42px; }
+.settings-card > summary { list-style: none; cursor: pointer; }
+.settings-card > summary::-webkit-details-marker { display: none; }
+.settings-card > summary::after { content: '+'; margin-left: auto; padding-left: 8px; color: var(--text-secondary); font-size: 18px; line-height: 1; }
+.settings-card[open] > summary { margin-bottom: 15px; }
+.settings-card[open] > summary::after { content: '−'; }
+.debug-list { display: grid; gap: 8px; }
+.debug-list p { display: flex; justify-content: space-between; gap: 12px; margin: 0; padding-bottom: 8px; border-bottom: 1px solid var(--border); font-size: 10px; }
+.debug-list strong { flex: 0 0 auto; color: var(--text-primary); }
+.debug-list span { min-width: 0; color: var(--text-secondary); text-align: right; overflow-wrap: anywhere; }
+
+@media (max-width: 760px) {
+  .settings-field-grid { grid-template-columns: minmax(0, 1fr); }
+  .settings-action-row { align-items: stretch; }
+  .settings-action-row .button { flex: 1 1 145px; white-space: normal; }
+  .voice-panel-heading { align-items: flex-start; }
+  .audio-controls { flex: 0 0 auto; }
+}

@@ -24,20 +24,24 @@ Double-click **Run AI 360.bat** in the project folder. It checks for Node.js and
 
 ## Demo Mode and AI providers
 
-Demo Mode is the default and handles coaching, study prompts, voice responses, and independence analysis without network access. Choose Groq or OpenRouter in Settings to use the Cloudflare Pages Function at `/api/ai`.
+Demo Mode is the default and handles coaching, study prompts, voice responses, and independence analysis without network access. In Settings, choose Groq, an OpenAI-compatible service, a custom endpoint, or a local server such as Ollama or LM Studio. Configure the API base URL and model there; model discovery works for compatible `/models` endpoints and Ollama's `/api/tags`.
 
-Provider credentials must only be configured as server-side Cloudflare secrets:
+For Groq and OpenRouter, leave the Settings API key field blank to keep credentials on Cloudflare. Configure encrypted provider secrets:
 
 ```sh
 wrangler secret put GROQ_API_KEY
 wrangler secret put OPENROUTER_API_KEY
 ```
 
-The optional `VITE_AI_API_URL` in `.env` is a public API base URL, never a secret. If the function is not deployed or an upstream provider is unavailable, AIService falls back to feature-aware demo responses.
+`VITE_AI_API_URL` is an optional public base URL for a separate AI 360 API deployment; leave it blank when the app and Pages Function are deployed together. `VITE_GROQ_API_URL` is the public Groq API base URL used to prefill the Groq settings form (`https://api.groq.com/openai/v1` by default). Neither variable is an API key. Never put secrets in `VITE_` variables.
+
+API keys typed into Settings for direct/custom providers are kept in memory for the current browser tab only; they are not stored in local storage, exported, or synchronized. Direct endpoints must allow browser CORS. Local endpoints must be reachable from the device running the browser; use `http://localhost:11434/v1` for Ollama or configure the local server's CORS/origin settings. A phone cannot use `localhost` to reach an AI server running on a separate computer—use that computer's LAN address instead.
+
+Responses stream progressively when the endpoint supports OpenAI-compatible server-sent events; ordinary JSON chat responses are also accepted. Requests have a timeout and can be cancelled from Voice AI. If a live provider fails, the app shows a diagnostic and uses a Demo Mode response. Retry by resubmitting the prompt or test the connection in Settings. Speech recognition and speech synthesis use browser-provided features; support and available voices vary by browser/device.
 
 ## Cloudflare Pages
 
-Connect the repository to Cloudflare Pages with build command `npm run build` and output directory `dist`. The `functions/api/ai.ts` Pages Function is bundled as the server-side AI endpoint. Add provider keys in the Pages project settings as encrypted environment secrets; do not use `VITE_` variables for secrets.
+Connect the repository to Cloudflare Pages with build command `npm run build` and output directory `dist`. The `functions/api/ai.ts` Pages Function is bundled as the server-side Groq/OpenRouter endpoint. Add `GROQ_API_KEY` and/or `OPENROUTER_API_KEY` in the Pages project settings as encrypted secrets; do not use `VITE_` variables for secrets. Set `VITE_GROQ_API_URL` only as a public endpoint URL. If using `wrangler pages dev`, configure secrets in the local Wrangler environment as well.
 
 ## Capacitor preparation
 

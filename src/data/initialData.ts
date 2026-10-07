@@ -4,6 +4,14 @@ const day = 24 * 60 * 60 * 1000
 
 export const initialData: AppData = {
   provider: 'demo',
+  aiSettings: {
+    providerName: 'Groq',
+    baseUrl: import.meta.env.VITE_GROQ_API_URL || 'https://api.groq.com/openai/v1',
+    model: 'llama-3.3-70b-versatile',
+    temperature: 0.6,
+    maxTokens: 350,
+  },
+  voiceSettings: { language: 'en-US', voiceURI: '', rate: 1, pitch: 1, volume: 1 },
   theme: 'light',
   exhibitionMode: true,
   notificationsEnabled: false,
@@ -42,6 +50,8 @@ export const initialData: AppData = {
 
 export const freshData: AppData = {
   provider: 'demo',
+  aiSettings: { ...initialData.aiSettings },
+  voiceSettings: { ...initialData.voiceSettings },
   theme: 'light',
   exhibitionMode: false,
   notificationsEnabled: false,

@@ -1,8 +1,74 @@
-import type { AIAnalysis, AIFeature, AIMessage, AIProviderName, AIResponse } from '../../types'
+import type { AIAnalysis, AISettings, AIFeature, AIMessage, AIProviderName, AIResponse } from '../../types'
 
 export interface AIOptions {
   feature: AIFeature
   mode?: string
+}
+
+export type AIStreamHandler = (chunk: string) => void
+
+interface ProviderModel {
+  id: string
+  name?: string
+}
+
+let sessionApiKey = ''
+
+export function setSessionApiKey(apiKey: string) {
+  sessionApiKey = apiKey.trim()
+}
+
+function apiBaseUrl(baseUrl: string): string {
+  const normalized = baseUrl.trim().replace(/\/+$/, '').replace(/\/chat\/completions$/i, '')
+  if (!normalized) return ''
+  let parsed: URL
+  try {
+    parsed = new URL(normalized)
+  } catch {
+    throw new Error('Enter a valid provider Base URL, including http:// or https://.')
+  }
+  if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.username || parsed.password) {
+    throw new Error('Base URL must use HTTP or HTTPS and must not contain credentials.')
+  }
+  return normalized
+}
+
+function endpointFor(baseUrl: string, path: string): string {
+  return `${apiBaseUrl(baseUrl)}/${path}`
+}
+
+function proxyUrl(): string {
+  const configured = import.meta.env.VITE_AI_API_URL?.trim().replace(/\/+$/, '') ?? ''
+  return configured.endsWith('/api/ai') ? configured : `${configured}/api/ai`
+}
+
+function readModelList(payload: unknown): ProviderModel[] {
+  if (!payload || typeof payload !== 'object' || !('data' in payload) || !Array.isArray(payload.data)) return []
+  return payload.data.flatMap((item): ProviderModel[] => {
+    if (!item || typeof item !== 'object' || !('id' in item) || typeof item.id !== 'string') return []
+    return [{ id: item.id, name: 'name' in item && typeof item.name === 'string' ? item.name : undefined }]
+  })
+}
+
+async function requestWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 12000, signal?: AbortSignal): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
+  const abortRequest = () => controller.abort()
+  signal?.addEventListener('abort', abortRequest, { once: true })
+  if (signal?.aborted) controller.abort()
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } finally {
+    window.clearTimeout(timeout)
+    signal?.removeEventListener('abort', abortRequest)
+  }
+}
+
+function formatError(status: number, message: string): Error {
+  if (status === 401 || status === 403) return new Error('The API key was rejected. Check the key in Settings.')
+  if (status === 429) return new Error('The provider rate limit was reached. Wait a moment, then retry.')
+  if (status >= 500) return new Error(`The provider is temporarily unavailable (HTTP ${status}). Try again shortly.`)
+  return new Error(message || `The provider returned HTTP ${status}.`)
 }
 
 export interface AIProvider {
@@ -71,55 +137,192 @@ export class DemoProvider implements AIProvider {
   }
 }
 
-class APIProvider implements AIProvider {
-  constructor(readonly name: 'groq' | 'openrouter') {}
-
-  async chat(messages: AIMessage[], options: AIOptions): Promise<string> {
-    const controller = new AbortController()
-    const timeout = window.setTimeout(() => controller.abort(), 12000)
-    try {
-      const baseUrl = import.meta.env.VITE_AI_API_URL?.replace(/\/$/, '') ?? ''
-      const response = await fetch(`${baseUrl}/api/ai`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: this.name, feature: options.feature, mode: options.mode, messages }),
-        signal: controller.signal,
-      })
-      if (!response.ok) throw new Error('AI service unavailable')
-      const result: unknown = await response.json()
-      if (!result || typeof result !== 'object' || !('text' in result) || typeof result.text !== 'string') {
-        throw new Error('Invalid AI response')
-      }
-      return result.text
-    } finally {
-      window.clearTimeout(timeout)
-    }
-  }
-}
-
 const demoProvider = new DemoProvider()
-const providers: Record<AIProviderName, AIProvider> = {
-  demo: demoProvider,
-  groq: new APIProvider('groq'),
-  openrouter: new APIProvider('openrouter'),
+
+async function complete(
+  messages: AIMessage[],
+  options: AIOptions,
+  provider: Exclude<AIProviderName, 'demo'>,
+  settings: AISettings,
+  onChunk?: AIStreamHandler,
+  signal?: AbortSignal,
+): Promise<string> {
+  const useCloudflareProxy = (provider === 'groq' || provider === 'openrouter') && !sessionApiKey
+  const url = useCloudflareProxy ? proxyUrl() : endpointFor(settings.baseUrl, 'chat/completions')
+  if (!useCloudflareProxy && !apiBaseUrl(settings.baseUrl)) {
+    throw new Error('Set a provider Base URL in Settings before connecting.')
+  }
+  const requestMessages = [
+    { role: 'system', content: `You are the AI 360 learning and digital wellness coach. Be concise, warm, practical, and encourage independent thinking.\nFeature: ${options.feature}. ${options.mode ? `Study mode: ${options.mode}.` : ''}` },
+    ...messages.slice(-19).map(({ role, content }) => ({ role, content })),
+  ]
+  let response: Response
+  try {
+    response = await requestWithTimeout(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(!useCloudflareProxy && sessionApiKey ? { Authorization: `Bearer ${sessionApiKey}` } : {}),
+      },
+      body: JSON.stringify(useCloudflareProxy
+        ? {
+          provider: provider === 'openrouter' ? 'openrouter' : 'groq',
+          feature: options.feature,
+          mode: options.mode,
+          model: settings.model,
+          temperature: settings.temperature,
+          max_tokens: settings.maxTokens,
+          stream: true,
+          messages: requestMessages,
+        }
+        : {
+          model: settings.model,
+          temperature: settings.temperature,
+          max_tokens: settings.maxTokens,
+          stream: true,
+          messages: requestMessages,
+        }),
+    }, 12000, signal)
+  } catch (error) {
+    if (signal?.aborted) throw new Error('The request was cancelled.')
+    if (error instanceof Error && error.name === 'AbortError') throw new Error('The connection timed out. Check the endpoint and retry.')
+    if (error instanceof TypeError) throw new Error('Could not reach this endpoint. Check the URL, local server, and CORS settings.')
+    throw error
+  }
+  if (response.headers.get('content-type')?.includes('text/event-stream') && response.body) {
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffered = ''
+    let content = ''
+    let timedOut = false
+    const streamTimeout = window.setTimeout(() => {
+      timedOut = true
+      void reader.cancel()
+    }, 12000)
+    const cancelReader = () => { void reader.cancel() }
+    signal?.addEventListener('abort', cancelReader, { once: true })
+    const readLine = (line: string) => {
+      if (!line.startsWith('data:')) return
+      const data = line.slice(5).trim()
+      if (!data || data === '[DONE]') return
+      try {
+        const event: unknown = JSON.parse(data)
+        if (event && typeof event === 'object' && 'choices' in event && Array.isArray(event.choices)) {
+          const chunk = event.choices[0]?.delta?.content
+          if (typeof chunk === 'string') {
+            content += chunk
+            onChunk?.(chunk)
+          }
+        } else if (event && typeof event === 'object' && 'error' in event) {
+          throw new Error('The AI provider reported an error while streaming.')
+        }
+      } catch {
+        throw new Error('The provider sent an invalid streaming response.')
+      }
+    }
+    try {
+      while (true) {
+        const { value, done } = await reader.read()
+        buffered += decoder.decode(value, { stream: !done })
+        const lines = buffered.split(/\r?\n/)
+        buffered = lines.pop() ?? ''
+        lines.forEach(readLine)
+        if (done) {
+          if (buffered) readLine(buffered)
+          break
+        }
+      }
+    } catch (error) {
+      await reader.cancel()
+      if (signal?.aborted) throw new Error('The request was cancelled.')
+      throw error
+    } finally {
+      window.clearTimeout(streamTimeout)
+      signal?.removeEventListener('abort', cancelReader)
+    }
+    if (signal?.aborted) throw new Error('The request was cancelled.')
+    if (timedOut) throw new Error('The provider response timed out while streaming.')
+    if (content.trim()) return content.trim()
+    throw new Error('The provider returned an empty streaming response.')
+  }
+  const result: unknown = await response.json().catch(() => null)
+  if (!response.ok) {
+    const message = result && typeof result === 'object' && 'error' in result && typeof result.error === 'string'
+      ? result.error
+      : ''
+    throw formatError(response.status, message)
+  }
+  if (result && typeof result === 'object' && 'text' in result && typeof result.text === 'string') {
+    return result.text.trim()
+  }
+  if (result && typeof result === 'object' && 'choices' in result && Array.isArray(result.choices)) {
+    const content = result.choices[0]?.message?.content
+    if (typeof content === 'string' && content.trim()) return content.trim()
+  }
+  throw new Error('The endpoint responded, but its chat response was not in a supported format.')
 }
 
 export const AIService = {
-  async chat(messages: AIMessage[], options: AIOptions, selected: AIProviderName): Promise<AIResponse> {
-    const provider = providers[selected]
+  async chat(
+    messages: AIMessage[],
+    options: AIOptions,
+    selected: AIProviderName,
+    settings: AISettings,
+    onChunk?: AIStreamHandler,
+    signal?: AbortSignal,
+  ): Promise<AIResponse> {
     if (selected === 'demo') {
-      return { text: await demoProvider.chat(messages, options), provider: 'demo', usedFallback: false }
+      const text = await demoProvider.chat(messages, options)
+      onChunk?.(text)
+      return { text, provider: 'demo', usedFallback: false }
     }
     try {
-      return { text: await provider.chat(messages, options), provider: selected, usedFallback: false }
-    } catch {
-      return { text: await demoProvider.chat(messages, options), provider: 'demo', usedFallback: true }
+      return { text: await complete(messages, options, selected, settings, onChunk, signal), provider: selected, usedFallback: false }
+    } catch (error) {
+      if (signal?.aborted) throw error
+      const fallbackReason = error instanceof Error ? error.message : 'The provider could not complete the request.'
+      const text = await demoProvider.chat(messages, options)
+      onChunk?.('')
+      onChunk?.(text)
+      return { text, provider: 'demo', usedFallback: true, fallbackReason }
     }
   },
 
-  async analyzeIndependence(text: string, selected: AIProviderName): Promise<{ analysis: AIAnalysis; usedFallback: boolean }> {
+  async testConnection(provider: AIProviderName, settings: AISettings): Promise<void> {
+    if (provider === 'demo') return
+    await complete(
+      [{ id: crypto.randomUUID(), role: 'user', content: 'Reply with the single word "connected".', createdAt: new Date().toISOString() }],
+      { feature: 'coach' },
+      provider,
+      settings,
+    )
+  },
+
+  async discoverModels(provider: AIProviderName, settings: AISettings): Promise<ProviderModel[]> {
+    if (provider === 'demo' || ((provider === 'groq' || provider === 'openrouter') && !sessionApiKey)) {
+      throw new Error('Model discovery requires an API key or a direct provider endpoint.')
+    }
+    const headers = sessionApiKey ? { Authorization: `Bearer ${sessionApiKey}` } : undefined
+    let response = await requestWithTimeout(endpointFor(settings.baseUrl, 'models'), { headers })
+    if (!response.ok && provider === 'local') {
+      const root = apiBaseUrl(settings.baseUrl).replace(/\/v1$/i, '')
+      response = await requestWithTimeout(`${root}/api/tags`)
+      if (response.ok) {
+        const payload: unknown = await response.json()
+        if (payload && typeof payload === 'object' && 'models' in payload && Array.isArray(payload.models)) {
+          return payload.models.flatMap((item): ProviderModel[] => item && typeof item === 'object' && 'name' in item && typeof item.name === 'string'
+            ? [{ id: item.name, name: item.name }]
+            : [])
+        }
+      }
+    }
+    if (!response.ok) throw formatError(response.status, 'Could not load models from this endpoint.')
+    return readModelList(await response.json())
+  },
+
+  async analyzeIndependence(text: string, selected: AIProviderName, settings: AISettings): Promise<{ analysis: AIAnalysis; usedFallback: boolean; fallbackReason?: string }> {
     const message: AIMessage = { id: crypto.randomUUID(), role: 'user', content: text, createdAt: new Date().toISOString() }
-    const response = await this.chat([message], { feature: 'independence' }, selected)
+    const response = await this.chat([message], { feature: 'independence' }, selected, settings)
     const highDependence = /solve my entire|do all|entire assignment|just copied|give me the answer/i.test(text)
     const moderate = /help|explain|hint|check|brainstorm/i.test(text)
     const score = highDependence ? 58 : moderate ? 82 : 70
@@ -134,6 +337,7 @@ export const AIService = {
         independentAction: 'For your next question, try one step yourself before asking AI for a hint.',
       },
       usedFallback: response.usedFallback,
+      fallbackReason: response.fallbackReason,
     }
   },
 }

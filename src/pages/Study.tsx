@@ -30,10 +30,15 @@ export default function Study() {
     if (!prompt.trim() || loading) return
     setLoading(true)
     setNotice('')
+    setAnswer('')
+    let streamed = ''
     try {
-      const response = await AIService.chat([{ id: crypto.randomUUID(), role: 'user', content: prompt, createdAt: new Date().toISOString() }], { feature: 'study', mode: requestedMode }, data.provider)
+      const response = await AIService.chat([{ id: crypto.randomUUID(), role: 'user', content: prompt, createdAt: new Date().toISOString() }], { feature: 'study', mode: requestedMode }, data.provider, data.aiSettings, (chunk) => {
+        streamed = chunk ? streamed + chunk : ''
+        setAnswer(streamed)
+      })
       setAnswer(response.text)
-      if (response.usedFallback) setNotice('Demo Mode stepped in because the selected AI provider was unavailable.')
+      if (response.usedFallback) setNotice(`${response.fallbackReason ?? 'The selected provider is unavailable.'} Demo Mode stepped in; retry or switch providers in Settings.`)
     } catch {
       setNotice('Your study helper is unavailable right now. Please retry or select Demo Mode in Settings.')
     } finally {

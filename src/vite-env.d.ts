@@ -2,6 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_AI_API_URL?: string
+  readonly VITE_GROQ_API_URL?: string
 }
 
 interface ImportMeta {

@@ -21,14 +21,24 @@ export default function Coach() {
     if (!trimmed || loading) return
     const userMessage: AIMessage = { id: crypto.randomUUID(), role: 'user', content: trimmed, createdAt: new Date().toISOString() }
     const next = [...messages, userMessage]
+    const assistantId = crypto.randomUUID()
+    let streamed = ''
     setMessages(next)
     setText('')
     setLoading(true)
     setNotice('')
     try {
-      const response = await AIService.chat(next, { feature: 'coach' }, data.provider)
-      setMessages((current) => [...current, { id: crypto.randomUUID(), role: 'assistant', content: response.text, createdAt: new Date().toISOString() }])
-      if (response.usedFallback) setNotice('Your selected AI is unavailable right now, so a helpful Demo Mode response is shown.')
+      const response = await AIService.chat(next, { feature: 'coach' }, data.provider, data.aiSettings, (chunk) => {
+        streamed = chunk ? streamed + chunk : ''
+        if (!streamed) return
+        setMessages((current) => current.some((message) => message.id === userMessage.id)
+          ? [...current.filter((message) => message.id !== assistantId), { id: assistantId, role: 'assistant', content: streamed, createdAt: new Date().toISOString() }]
+          : current)
+      })
+      setMessages((current) => current.some((message) => message.id === userMessage.id)
+        ? [...current.filter((message) => message.id !== assistantId), { id: assistantId, role: 'assistant', content: response.text, createdAt: new Date().toISOString() }]
+        : current)
+      if (response.usedFallback) setNotice(`${response.fallbackReason ?? 'The selected provider is unavailable.'} A Demo Mode response is shown; retry your message or switch providers in Settings.`)
       window.setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }), 40)
     } catch {
       setNotice('The coach could not respond right now. Please try again or switch to Demo Mode in Settings.')

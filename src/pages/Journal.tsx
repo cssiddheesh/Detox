@@ -19,10 +19,15 @@ export default function Journal() {
     setLoading(true)
     setError('')
     setNotice('')
+    setInsight('')
+    let streamed = ''
     try {
-      const response = await AIService.chat([{ id: crypto.randomUUID(), role: 'user', content: text, createdAt: new Date().toISOString() }], { feature: 'journal' }, data.provider)
+      const response = await AIService.chat([{ id: crypto.randomUUID(), role: 'user', content: text, createdAt: new Date().toISOString() }], { feature: 'journal' }, data.provider, data.aiSettings, (chunk) => {
+        streamed = chunk ? streamed + chunk : ''
+        setInsight(streamed)
+      })
       setInsight(response.text)
-      if (response.usedFallback) setNotice('Demo Mode created your reflection because the selected provider was unavailable.')
+      if (response.usedFallback) setNotice(`${response.fallbackReason ?? 'The selected provider is unavailable.'} Demo Mode created your reflection; retry or switch providers in Settings.`)
     } catch {
       setError('Reflection help is unavailable right now. Your entry is still safe to save without it.')
     } finally {

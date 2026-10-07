@@ -30,9 +30,10 @@ export default function Independence() {
     setAnalysis(null)
     setEarned(false)
     try {
-      const result = await AIService.analyzeIndependence(description, data.provider)
+      const result = await AIService.analyzeIndependence(description, data.provider, data.aiSettings)
       setAnalysis(result.analysis)
       setFallback(result.usedFallback)
+      if (result.usedFallback) setError(`${result.fallbackReason ?? 'The selected provider is unavailable.'} Demo Mode provided this reflection; retry or switch providers in Settings.`)
       updateData((current) => {
         const next = { ...current, independenceScores: [...current.independenceScores, result.analysis.score].slice(-12) }
         return { ...next, scoreHistory: scoreHistoryFor(next) }

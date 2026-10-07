@@ -7,7 +7,8 @@ let memoryData: AppData = structuredClone(initialData)
 function isAppData(value: unknown): value is AppData {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<AppData>
-  return (candidate.provider === 'demo' || candidate.provider === 'groq' || candidate.provider === 'openrouter')
+  return (candidate.provider === 'demo' || candidate.provider === 'groq' || candidate.provider === 'openrouter'
+    || candidate.provider === 'openai-compatible' || candidate.provider === 'custom' || candidate.provider === 'local')
     && (candidate.theme === 'light' || candidate.theme === 'dark' || candidate.theme === 'system')
     && typeof candidate.exhibitionMode === 'boolean'
     && typeof candidate.notificationsEnabled === 'boolean'
@@ -36,6 +37,38 @@ function isAppData(value: unknown): value is AppData {
     && candidate.independenceScores.every((score) => typeof score === 'number' && Number.isFinite(score))
     && Array.isArray(candidate.scoreHistory)
     && candidate.scoreHistory.every((score) => typeof score === 'number' && Number.isFinite(score))
+    && (candidate.aiSettings === undefined || (
+      typeof candidate.aiSettings.providerName === 'string'
+      && typeof candidate.aiSettings.baseUrl === 'string'
+      && typeof candidate.aiSettings.model === 'string'
+      && typeof candidate.aiSettings.temperature === 'number'
+      && Number.isFinite(candidate.aiSettings.temperature)
+      && candidate.aiSettings.temperature >= 0 && candidate.aiSettings.temperature <= 2
+      && typeof candidate.aiSettings.maxTokens === 'number'
+      && Number.isFinite(candidate.aiSettings.maxTokens)
+      && candidate.aiSettings.maxTokens >= 1 && candidate.aiSettings.maxTokens <= 4096
+    ))
+    && (candidate.voiceSettings === undefined || (
+      typeof candidate.voiceSettings.language === 'string'
+      && typeof candidate.voiceSettings.voiceURI === 'string'
+      && typeof candidate.voiceSettings.rate === 'number'
+      && Number.isFinite(candidate.voiceSettings.rate)
+      && candidate.voiceSettings.rate >= 0.5 && candidate.voiceSettings.rate <= 2
+      && typeof candidate.voiceSettings.pitch === 'number'
+      && Number.isFinite(candidate.voiceSettings.pitch)
+      && candidate.voiceSettings.pitch >= 0 && candidate.voiceSettings.pitch <= 2
+      && typeof candidate.voiceSettings.volume === 'number'
+      && Number.isFinite(candidate.voiceSettings.volume)
+      && candidate.voiceSettings.volume >= 0 && candidate.voiceSettings.volume <= 1
+    ))
+}
+
+function normalizeAppData(data: AppData): AppData {
+  return {
+    ...data,
+    aiSettings: data.aiSettings ?? structuredClone(initialData.aiSettings),
+    voiceSettings: data.voiceSettings ?? structuredClone(initialData.voiceSettings),
+  }
 }
 
 export const storageService = {
@@ -45,8 +78,8 @@ export const storageService = {
       if (saved) {
         const parsed: unknown = JSON.parse(saved)
         if (isAppData(parsed)) {
-          memoryData = parsed
-          return parsed
+          memoryData = normalizeAppData(parsed)
+          return memoryData
         }
         console.warn('AI 360 found invalid saved data; using the exhibition sample instead.')
       }

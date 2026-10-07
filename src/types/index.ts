@@ -1,6 +1,22 @@
-export type AIProviderName = 'demo' | 'groq' | 'openrouter'
+export type AIProviderName = 'demo' | 'groq' | 'openrouter' | 'openai-compatible' | 'custom' | 'local'
 export type AIFeature = 'coach' | 'independence' | 'study' | 'journal' | 'voice' | 'fact-check'
 export type ChatRole = 'user' | 'assistant'
+
+export interface AISettings {
+  providerName: string
+  baseUrl: string
+  model: string
+  temperature: number
+  maxTokens: number
+}
+
+export interface VoiceSettings {
+  language: string
+  voiceURI: string
+  rate: number
+  pitch: number
+  volume: number
+}
 
 export interface AIMessage {
   id: string
@@ -13,6 +29,7 @@ export interface AIResponse {
   text: string
   provider: AIProviderName
   usedFallback: boolean
+  fallbackReason?: string
 }
 
 export interface AIAnalysis {
@@ -53,6 +70,8 @@ export interface JournalEntry {
 
 export interface AppData {
   provider: AIProviderName
+  aiSettings: AISettings
+  voiceSettings: VoiceSettings
   theme: 'light' | 'dark' | 'system'
   exhibitionMode: boolean
   notificationsEnabled: boolean
